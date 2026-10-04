@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raster Lab</title>
+<meta name="description" content="Line drawing, circle drawing, clipping and 2D transforms, step by step.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;560&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f5f4f0; --bg-2: #ecebe5; --fg: #131312; --fg-2: #3b3a36; --muted: #74726b;
+  --line: rgb(19 19 18 / 0.13); --line-soft: rgb(19 19 18 / 0.06); --accent: #e2531f;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d0d0c; --bg-2: #161614; --fg: #ecebe6; --fg-2: #c5c3bc; --muted: #8c8a83;
+    --line: rgb(236 235 230 / 0.13); --line-soft: rgb(236 235 230 / 0.06); --accent: #ff6b3d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d0d0c; --bg-2: #161614; --fg: #ecebe6; --fg-2: #c5c3bc; --muted: #8c8a83;
+  --line: rgb(236 235 230 / 0.13); --line-soft: rgb(236 235 230 / 0.06); --accent: #ff6b3d;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.55 Geist, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.mono, button, input, select, table { font-family: "Geist Mono", ui-monospace, monospace; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 40px 24px 64px; }
+header { display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--line); padding-bottom: 24px; }
+h1 { font-weight: 560; font-size: clamp(2.2rem, 5vw, 3.6rem); letter-spacing: -0.04em; line-height: 1; margin: 0; }
+h1 i { font-style: italic; font-weight: 400; }
+header p { margin: 10px 0 0; color: var(--fg-2); max-width: 60ch; }
+.label { font: 450 12px/1.4 "Geist Mono", monospace; color: var(--muted); letter-spacing: 0.02em; }
+
+nav { display: flex; gap: 4px; flex-wrap: wrap; margin: 20px 0; }
+nav button { appearance: none; border: 1px solid var(--line); background: transparent; color: var(--fg-2);
+  padding: 8px 12px; font-size: 13px; border-radius: 999px; cursor: pointer;
+  transition: border-color .2s ease-out, color .2s ease-out, background .2s ease-out; }
+nav button:hover { border-color: var(--fg); color: var(--fg); }
+nav button[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
+@media (max-width: 920px) { main { grid-template-columns: 1fr; } }
+.stage { border: 1px solid var(--line); background: var(--bg-2); border-radius: 6px; overflow: hidden; }
+canvas { display: block; width: 100%; aspect-ratio: 64 / 40; touch-action: none; cursor: crosshair; }
+.hint { padding: 10px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+aside { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+aside h2 { font-weight: 560; font-size: 1.5rem; letter-spacing: -0.03em; margin: 0; }
+aside p { margin: 0; color: var(--fg-2); font-size: 15px; }
+.controls { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.btn { appearance: none; border: 1px solid var(--line); background: transparent; color: var(--fg);
+  padding: 7px 11px; font-size: 12px; border-radius: 4px; cursor: pointer;
+  transition: border-color .15s ease-out, color .15s ease-out; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:active { transform: scale(0.97); }
+.btn.on { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .4; pointer-events: none; }
+input[type="number"], select { width: 64px; padding: 6px 6px; font-size: 12px; border: 1px solid var(--line);
+  border-radius: 4px; background: var(--bg); color: var(--fg); }
+select { width: auto; }
+.field { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.grp { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
+
+.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
+.kv div { border: 1px solid var(--line-soft); border-radius: 4px; padding: 6px 8px; }
+.kv b { display: block; font: 500 14px "Geist Mono", monospace; font-variant-numeric: tabular-nums; }
+.trace { max-height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--bg); color: var(--muted); font-weight: 450; }
+th:first-child, td:first-child { text-align: left; }
+tr.cur td { color: var(--accent); }
+tr.dim td { color: var(--muted); }
+
+.ubar { position: relative; height: 34px; margin: 6px 4px 18px; }
+.ubar .rail { position: absolute; left: 0; right: 0; top: 16px; height: 1px; background: var(--line); }
+.ubar .seg { position: absolute; top: 14px; height: 5px; background: var(--accent); border-radius: 2px; }
+.ubar .tick { position: absolute; top: 8px; width: 1px; height: 17px; background: var(--fg); }
+.ubar .tick span { position: absolute; top: 20px; transform: translateX(-50%); font: 11px "Geist Mono", monospace; color: var(--fg-2); white-space: nowrap; }
+.ubar .end span { color: var(--muted); }
+.matrix { display: inline-grid; grid-template-columns: repeat(3, auto); gap: 2px 14px; padding: 8px 12px;
+  border-left: 1px solid var(--fg); border-right: 1px solid var(--fg); font: 13px "Geist Mono", monospace;
+  font-variant-numeric: tabular-nums; }
+.matrix span { text-align: right; }
+details { font-size: 14px; color: var(--fg-2); }
+summary { cursor: pointer; font: 12px "Geist Mono", monospace; color: var(--muted); }
+details ul { margin: 8px 0 0; padding-left: 18px; }
+kbd { font: 11px "Geist Mono", monospace; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); }
+@media (max-width: 600px) { .wrap { padding: 24px 16px 48px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Raster <i>lab</i></h1>
+      <p>How a computer turns maths into pixels: two ways to draw a line, a circle from one eighth of itself, clipping a line to a window, and moving shapes with matrices. Every algorithm runs live, step by step.</p>
+    </div>
+    <span class="label">Computer graphics, ported from C++ / OpenGL</span>
+  </header>
+
+  <nav role="tablist" id="tabs">
+    <button role="tab" data-mode="dda">Line: DDA</button>
+    <button role="tab" data-mode="bresenham">Line: Bresenham</button>
+    <button role="tab" data-mode="circle">Circle: midpoint</button>
+    <button role="tab" data-mode="clip">Clipping: Liang–Barsky</button>
+    <button role="tab" data-mode="transform">2D transforms</button>
+  </nav>
+
+  <main>
+    <div class="stage">
+      <canvas id="cv"></canvas>
+      <div class="hint mono" id="hint"></div>
+    </div>
+    <aside id="panel"></aside>
+  </main>
+
+  <footer class="label">Source and the original OpenGL programs: CG/*.cpp. Algorithms in web/cg.js, checked by web/test.cjs.</footer>
+</div>
+
+<script src="cg.js"></script>
+<script>
+const COLS = 64, ROWS = 40;
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const panel = document.getElementById('panel');
+const hint = document.getElementById('hint');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let cell = 10, C = {};
+
+const fmt = (v) => v === null || v === undefined ? '–' : Number.isInteger(v) ? String(v) : v.toFixed(2);
+const clampi = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function readColors() {
+  const s = getComputedStyle(document.documentElement);
+  for (const k of ['bg', 'bg-2', 'fg', 'fg-2', 'muted', 'line', 'line-soft', 'accent']) C[k] = s.getPropertyValue('--' + k).trim();
+}
+
+function resize() {
+  const w = cv.clientWidth, dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(w * ROWS / COLS * dpr);
+  cell = w / COLS;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+// world (y up) -> screen
+const SX = (x) => x * cell, SY = (y) => (ROWS - y) * cell;
+function worldFromEvent(e) {
+  const r = cv.getBoundingClientRect();
+  return [(e.clientX - r.left) / cell, ROWS - (e.clientY - r.top) / cell];
+}
+
+function grid(step = 1) {
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = C['line-soft'];
+  ctx.beginPath();
+  for (let x = 0; x <= COLS; x += step) { ctx.moveTo(SX(x) + .5, 0); ctx.lineTo(SX(x) + .5, SY(0)); }
+  for (let y = 0; y <= ROWS; y += step) { ctx.moveTo(0, SY(y) + .5); ctx.lineTo(SX(COLS), SY(y) + .5); }
+  ctx.stroke();
+}
+function pixel(i, j, color, alpha = 1) {
+  if (i < 0 || j < 0 || i >= COLS || j >= ROWS) return;
+  ctx.globalAlpha = alpha; ctx.fillStyle = color;
+  ctx.fillRect(SX(i) + 1, SY(j + 1) + 1, cell - 1, cell - 1);
+  ctx.globalAlpha = 1;
+}
+function outline(i, j, color) {
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.strokeRect(SX(i) + 2, SY(j + 1) + 2, cell - 3, cell - 3);
+}
+function seg(x0, y0, x1, y1, color, width = 1, dash = []) {
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash);
+  ctx.beginPath(); ctx.moveTo(SX(x0), SY(y0)); ctx.lineTo(SX(x1), SY(y1)); ctx.stroke();
+  ctx.setLineDash([]);
+}
+function dot(x, y, color, r = 5, fill = true) {
+  ctx.beginPath(); ctx.arc(SX(x), SY(y), r, 0, Math.PI * 2);
+  if (fill) { ctx.fillStyle = color; ctx.fill(); } else { ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke(); }
+}
+function text(s, x, y, color, align = 'left') {
+  ctx.fillStyle = color; ctx.font = '11px "Geist Mono", monospace'; ctx.textAlign = align;
+  ctx.fillText(s, SX(x), SY(y));
+}
+
+/* ---------- step player shared by the raster modes ---------- */
+const player = {
+  total: 0, shown: 0, playing: false, speed: 12, acc: 0, last: 0,
+  reset(total) { this.total = total; this.shown = total ? 1 : 0; this.playing = false; },
+  play() {
+    if (this.shown >= this.total) this.shown = 1;
+    if (reduceMotion) { this.shown = this.total; render(); return; }
+    this.playing = true; this.last = performance.now(); this.acc = 0; requestAnimationFrame(tick); render();
+  },
+  pause() { this.playing = false; render(); },
+  step(d) { this.playing = false; this.shown = clampi(this.shown + d, 1, this.total); render(); },
+};
+function tick(now) {
+  if (!player.playing) return;
+  player.acc += (now - player.last) / 1000 * player.speed; player.last = now;
+  const n = Math.floor(player.acc);
+  if (n) { player.acc -= n; player.shown = Math.min(player.total, player.shown + n); render(); }
+  if (player.shown >= player.total) { player.playing = false; render(); return; }
+  requestAnimationFrame(tick);
+}
+function playerControls() {
+  return `<div class="controls">
+    <button class="btn" data-act="play">${player.playing ? 'Pause' : player.shown >= player.total ? 'Replay' : 'Play'}</button>
+    <button class="btn" data-act="back" ${player.shown <= 1 ? 'disabled' : ''}>Step −</button>
+    <button class="btn" data-act="fwd" ${player.shown >= player.total ? 'disabled' : ''}>Step +</button>
+    <button class="btn" data-act="all">Show all</button>
+    <span class="field">speed
+      ${[4, 12, 40].map(s => `<button class="btn ${player.speed === s ? 'on' : ''}" data-speed="${s}">${s}/s</button>`).join('')}
+    </span>
+  </div>`;
+}
+function traceTable(cols, rows, shown) {
+  const head = cols.map(c => `<th>${c[0]}</th>`).join('');
+  const body = rows.map((r, i) => i >= shown ? '' :
+    `<tr class="${i === shown - 1 ? 'cur' : ''}">${cols.map(c => `<td>${typeof r[c[1]] === 'string' ? r[c[1]] : fmt(r[c[1]])}</td>`).join('')}</tr>`).join('');
+  return `<div class="trace" id="trace"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function kv(obj) {
+  return `<div class="kv">${Object.entries(obj).map(([k, v]) => `<div><span class="label">${k}</span><b>${fmt(v)}</b></div>`).join('')}</div>`;
+}
+
+/* ---------- modes ---------- */
+const state = {
+  mode: 'dda',
+  line: { a: [6, 8], b: [52, 31], pending: null },
+  circle: { c: [32, 20], r: 15, pending: null },
+  clip: { a: [6, 6], b: [58, 33], w0: [18, 10], w1: [46, 30], drag: null },
+  tf: { poly: [[-6, -4], [6, -4], [6, 4], [0, 9], [-6, 4]], ghost: null, M: null, pivot: 'centroid',
+        drawing: null, anim: null, lastOp: null, history: [] },
+};
+
+const MODES = {
+  dda: {
+    title: 'DDA line',
+    about: 'Digital Differential Analyzer. Take as many steps as the longer side of the line. Each step moves exactly one pixel along that side and adds a fixed fraction (dy/steps) to the other coordinate, then rounds it to the nearest pixel.',
+    hint: 'Click two cells to draw a line.',
+    fixed: ['The loop stopped when x OR y hit the end value. Comparing floats for equality can miss it, so lines ended early or never ended.',
+            'It always stepped x by +1, so lines drawn right-to-left or steeper than 45° going down were wrong; vertical lines divided by zero.',
+            'Now: steps = max(|dx|, |dy|), fixed increments, works in every direction.'],
+    run: () => CG.dda(...state.line.a, ...state.line.b),
+    cols: [['i', 'i'], ['x', 'x'], ['y', 'y'], ['pixel', 'plot']],
+  },
+  bresenham: {
+    title: 'Bresenham line',
+    about: 'Practically the same pixels as DDA, but with integers only: no floats, no rounding. A decision value p tracks how far the true line is from the pixel centre. If p > 0 the line has drifted half a pixel, so the minor axis steps too and p is pulled back by 2·dx.',
+    hint: 'Click two cells to draw a line.',
+    fixed: ['The loop drew dx pixels instead of dx + 1, so the last pixel of every line was missing.',
+            'After the first line, further clicks were ignored. Now a third click starts a new line.'],
+    run: () => CG.bresenham(...state.line.a, ...state.line.b),
+    cols: [['i', 'i'], ['pixel', 'plot'], ['p', 'p'], ['step', 'step']],
+  },
+};
+
+function ideal() {
+  const { a, b } = state.line;
+  seg(a[0] + .5, a[1] + .5, b[0] + .5, b[1] + .5, C.fg, 1, [4, 4]);
+}
+
+function drawLineMode() {
+  grid();
+  if (state.line.pending) { outline(...state.line.pending, C.accent); return; }
+  const res = MODES[state.mode].run();
+  const pts = res.points;
+  pts.slice(0, player.shown).forEach(([x, y], i) => pixel(x, y, i === player.shown - 1 ? C.accent : C.fg, i === player.shown - 1 ? 1 : .8));
+  ideal();
+  outline(...state.line.a, C.accent);
+  outline(...state.line.b, C.accent);
+}
+
+function lineClick(w) {
+  const p = [clampi(Math.floor(w[0]), 0, COLS - 1), clampi(Math.floor(w[1]), 0, ROWS - 1)];
+  if (!state.line.pending) { state.line.pending = p; state.line.a = p; player.reset(0); }
+  else { state.line.b = p; state.line.pending = null; startPlayer(); }
+  render();
+}
+
+function startPlayer() {
+  const total = state.mode === 'circle' ? CG.midpointCircle(state.circle.r).length : MODES[state.mode].run().points.length;
+  player.reset(total); player.play();
+}
+
+function linePanel() {
+  const m = MODES[state.mode], res = m.run();
+  const pending = state.line.pending;
+  return `<h2>${m.title}</h2><p>${m.about}</p>
+  ${pending ? '<p class="label">Now click the end cell.</p>' : playerControls()}
+  ${pending ? '' : kv(res.info)}
+  ${pending ? '' : traceTable(m.cols, res.trace, player.shown)}
+  ${fixedNote(m.fixed)}`;
+}
+
+function fixedNote(items) {
+  return `<details><summary>What was broken in the original C++</summary><ul>${items.map(i => `<li>${i}</li>`).join('')}</ul></details>`;
+}
+
+/* circle */
+function drawCircle() {
+  grid();
+  const { c, r } = state.circle, steps = CG.midpointCircle(r);
+  ctx.strokeStyle = C.fg; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.arc(SX(c[0] + .5), SY(c[1] + .5), r * cell, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+  // octant boundaries
+  for (const [dx, dy] of [[1, 1], [1, -1]]) seg(c[0] + .5 - dx * r, c[1] + .5 - dy * r, c[0] + .5 + dx * r, c[1] + .5 + dy * r, C.line, 1);
+  steps.slice(0, player.shown).forEach(({ x, y }, i) => {
+    const cur = i === player.shown - 1;
+    CG.octants(x, y).forEach(([ox, oy], k) => pixel(c[0] + ox, c[1] + oy, cur && k === 0 ? C.accent : C.fg, cur ? (k === 0 ? 1 : .9) : (k === 0 ? .85 : .45)));
+  });
+  outline(...c, C.accent);
+  if (state.circle.pending) text('click a point on the rim', c[0] + 1.5, c[1] + 1.5, C.muted);
+}
+function circleClick(w) {
+  const p = [clampi(Math.floor(w[0]), 0, COLS - 1), clampi(Math.floor(w[1]), 0, ROWS - 1)];
+  const cs = state.circle;
+  if (!cs.pending) { cs.pending = true; cs.c = p; cs.r = 0; player.reset(0); }
+  else { cs.pending = false; cs.r = Math.max(1, Math.round(Math.hypot(p[0] - cs.c[0], p[1] - cs.c[1]))); startPlayer(); }
+  render();
+}
+function circlePanel() {
+  const { r, pending } = state.circle, steps = CG.midpointCircle(r);
+  return `<h2>Midpoint circle</h2>
+  <p>A circle is symmetric in 8 ways, so only the arc from the top (0, r) down to the 45° line is computed; every pixel found is mirrored into the other 7 octants. Moving right one pixel, the choice is: stay at y, or drop to y − 1. P is the circle equation x² + y² − r² evaluated at the midpoint between those two pixels. P &lt; 0 means the midpoint is inside, so stay.</p>
+  ${pending ? '<p class="label">Now click a point on the rim.</p>' : playerControls() + kv({ r, 'octant steps': steps.length, pixels: steps.length * 8 }) +
+    traceTable([['step', 'i'], ['x', 'x'], ['y', 'y'], ['P', 'P'], ['next', 'next']],
+      steps.map((s, i) => ({ ...s, i, next: i === steps.length - 1 ? 'done' : steps[i + 1].y < s.y ? 'y − 1' : 'keep y' })), player.shown)}
+  <p class="label">Highlighted: the computed pixel. Lighter: its 7 mirror images.</p>
+  ${fixedNote(['The loop stepped before plotting, so the 4 pixels on the axes (top, bottom, left, right) were never drawn: visible gaps.',
+    'The decision update used the old x: P + 2x + 1 should use the new x (it was off by 2 every step), which drifts the curve.',
+    'The radius was truncated instead of rounded.'])}`;
+}
+
+/* clipping */
+function clipRect() {
+  const { w0, w1 } = state.clip;
+  return [Math.min(w0[0], w1[0]), Math.min(w0[1], w1[1]), Math.max(w0[0], w1[0]), Math.max(w0[1], w1[1])];
+}
+function clipResult() {
+  const { a, b } = state.clip;
+  return CG.liangBarsky(...a, ...b, ...clipRect());
+}
+function drawClip() {
+  grid(2);
+  const [xmin, ymin, xmax, ymax] = clipRect(), { a, b, w0, w1 } = state.clip;
+  ctx.fillStyle = C['line-soft']; ctx.fillRect(SX(xmin), SY(ymax), (xmax - xmin) * cell, (ymax - ymin) * cell);
+  ctx.strokeStyle = C.fg; ctx.lineWidth = 1.5; ctx.strokeRect(SX(xmin), SY(ymax), (xmax - xmin) * cell, (ymax - ymin) * cell);
+  // the four infinite edge lines, faint
+  for (const x of [xmin, xmax]) seg(x, 0, x, ROWS, C.line, 1, [2, 4]);
+  for (const y of [ymin, ymax]) seg(0, y, COLS, y, C.line, 1, [2, 4]);
+  seg(...a, ...b, C.muted, 1.5, [5, 5]);
+  const res = clipResult();
+  if (res.accepted) {
+    const [cx0, cy0, cx1, cy1] = res.clipped;
+    seg(cx0, cy0, cx1, cy1, C.accent, 3);
+    dot(cx0, cy0, C.accent, 3.5); dot(cx1, cy1, C.accent, 3.5);
+    text('u1', cx0 + .6, cy0 + .6, C.accent); text('u2', cx1 + .6, cy1 + .6, C.accent);
+  }
+  dot(...a, C.fg, 5); dot(...b, C.fg, 5); text('P0', a[0] + .8, a[1] - .6, C.fg); text('P1', b[0] + .8, b[1] - .6, C.fg);
+  dot(...w0, C.fg, 5, false); dot(...w1, C.fg, 5, false);
+}
+function clipPanel() {
+  const res = clipResult();
+  const pct = (u) => `${clampi(u, 0, 1) * 100}%`;
+  return `<h2>Liang–Barsky clipping</h2>
+  <p>Write the line as P(u) = P0 + u·(P1 − P0), with u from 0 to 1. Each window edge becomes one inequality p·u ≤ q. Where p &lt; 0 the line is entering through that edge, so u can't be smaller than q/p: u1 is the largest of those. Where p &gt; 0 it's leaving, and u2 is the smallest. If u1 &lt; u2, the part between them is visible. Four divisions, no intersection tests.</p>
+  ${traceTable([['edge', 'edge'], ['p', 'p'], ['q', 'q'], ['q/p', 'r'], ['role', 'role']], res.rows, 4)}
+  <div>
+    <div class="label">u along the line</div>
+    <div class="ubar"><div class="rail"></div>
+      ${res.accepted ? `<div class="seg" style="left:${pct(res.u1)};width:calc(${pct(res.u2)} - ${pct(res.u1)})"></div>` : ''}
+      <div class="tick end" style="left:0"><span>0</span></div><div class="tick end" style="left:100%"><span>1</span></div>
+      ${res.u1 > 0 && res.u1 < 1 ? `<div class="tick" style="left:${pct(res.u1)}"><span>u1 ${fmt(res.u1)}</span></div>` : ''}
+      ${res.u2 > 0 && res.u2 < 1 ? `<div class="tick" style="left:${pct(res.u2)}"><span>u2 ${fmt(res.u2)}</span></div>` : ''}
+    </div>
+    ${kv({ u1: res.u1, u2: res.u2 })}
+    <p class="label" style="margin-top:8px">${res.accepted ? (res.u1 === 0 && res.u2 === 1 ? 'Fully inside: nothing to clip.' : 'Partly inside: the orange part is kept.') : 'Rejected: no part of the line is inside.'}</p>
+  </div>
+  ${fixedNote(['A window drawn right-to-left or top-to-bottom gave a wrong clip: the corners are now sorted into min/max first.',
+    'Lines parallel to an edge divided by zero and relied on infinities; they are now handled explicitly (q < 0 means outside).',
+    'Mouse clicks after the first clip kept piling up. Now each line + window pair starts fresh.'])}`;
+}
+const HANDLES = ['a', 'b', 'w0', 'w1'];
+function clipDown(w) {
+  const s = state.clip;
+  let best = null, bd = 1.2;
+  for (const h of HANDLES) { const d = Math.hypot(s[h][0] - w[0], s[h][1] - w[1]); if (d < bd) { bd = d; best = h; } }
+  if (best) s.drag = best;
+  else { s.a = w.slice(); s.b = w.slice(); s.drag = 'b'; }
+  render();
+}
+function clipMove(w) {
+  const s = state.clip;
+  if (!s.drag) return;
+  s[s.drag] = [clampi(Math.round(w[0] * 2) / 2, 0, COLS), clampi(Math.round(w[1] * 2) / 2, 0, ROWS)];
+  render();
+}
+
+/* transforms: coordinates relative to the centre axes, like the original */
+const OX = COLS / 2, OY = ROWS / 2;
+const TS = (x, y) => [x + OX, y + OY];
+const OPS = {
+  translate: { label: 'Translate', params: [['dx', 4], ['dy', 2]], m: (p) => CG.mat.translate(p.dx, p.dy), pivot: false, key: 'w a s d' },
+  rotate: { label: 'Rotate', params: [['θ°', 30]], m: (p, t = 1) => CG.mat.rotate(p['θ°'] * t), pivot: true, key: 'r t' },
+  scale: { label: 'Scale', params: [['sx', 1.5], ['sy', 1.5]], m: (p) => CG.mat.scale(p.sx, p.sy), pivot: true, key: 'k l' },
+  shear: { label: 'Shear x', params: [['sh', 0.5]], m: (p) => CG.mat.shearX(p.sh), pivot: true, key: 'h' },
+  reflectX: { label: 'Reflect: x-axis', params: [], m: () => CG.mat.scale(1, -1), pivot: false, key: 'v' },
+  reflectY: { label: 'Reflect: y-axis', params: [], m: () => CG.mat.scale(-1, 1), pivot: false, key: 'b' },
+  reflectO: { label: 'Reflect: origin', params: [], m: () => CG.mat.scale(-1, -1), pivot: false, key: 'n' },
+  reflectL: { label: 'Reflect: y = mx + c', params: [['m', 1], ['c', 2]], m: (p) => CG.mat.reflectLine(p.m, p.c), pivot: false, key: 'p' },
+};
+const opParams = {};
+for (const [k, op] of Object.entries(OPS)) opParams[k] = Object.fromEntries(op.params);
+
+function pivotPoint() {
+  const P = state.tf.poly;
+  if (state.tf.pivot === 'origin') return [0, 0];
+  if (state.tf.pivot === 'first vertex') return P[0];
+  return [P.reduce((s, p) => s + p[0], 0) / P.length, P.reduce((s, p) => s + p[1], 0) / P.length];
+}
+function opMatrix(name, params, t = 1) {
+  const op = OPS[name];
+  let M;
+  if (name === 'rotate') M = op.m(params, t);
+  else { const F = op.m(params), I = CG.mat.I(); M = I.map((v, i) => v + (F[i] - v) * t); } // straight blend from I to M
+  if (op.pivot) { const [px, py] = pivotPoint(); M = CG.mat.about(M, px, py); }
+  return M;
+}
+function applyOp(name, override) {
+  const tf = state.tf;
+  if (tf.anim || tf.drawing) return;
+  const params = { ...opParams[name], ...override };
+  const from = tf.poly.map(p => p.slice()), full = opMatrix(name, params, 1);
+  tf.history.push(from); tf.ghost = from; tf.lastOp = { name, params }; tf.M = full;
+  const pivotAtStart = pivotPoint();
+  const end = () => { tf.poly = CG.mat.apply(full, from); tf.anim = null; render(); };
+  if (reduceMotion) return end();
+  const t0 = performance.now(), dur = 650;
+  tf.anim = (now) => {
+    const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3); // ease-out cubic
+    const op = OPS[name];
+    let M = name === 'rotate' ? op.m(params, e) : (() => { const F = op.m(params), I = CG.mat.I(); return I.map((v, i) => v + (F[i] - v) * e); })();
+    if (op.pivot) M = CG.mat.about(M, ...pivotAtStart);
+    tf.poly = CG.mat.apply(M, from);
+    draw();
+    if (k < 1) requestAnimationFrame(tf.anim); else end();
+  };
+  requestAnimationFrame(tf.anim);
+  render();
+}
+function drawTransform() {
+  grid(2);
+  const tf = state.tf;
+  seg(0, OY, COLS, OY, C.muted, 1); seg(OX, 0, OX, ROWS, C.muted, 1);
+  text('x', COLS - 1.2, OY + .6, C.muted); text('y', OX + .6, ROWS - 1.2, C.muted);
+  if (tf.lastOp && tf.lastOp.name === 'reflectL') {
+    const { m, c } = tf.lastOp.params;
+    seg(...TS(-OX, -m * OX + c), ...TS(OX, m * OX + c), C.accent, 1, [6, 4]);
+  }
+  const poly = (P, stroke, fill, dash) => {
+    if (!P.length) return;
+    ctx.beginPath(); P.forEach(([x, y], i) => { const [wx, wy] = TS(x, y); i ? ctx.lineTo(SX(wx), SY(wy)) : ctx.moveTo(SX(wx), SY(wy)); });
+    if (!tf.drawing || P !== tf.drawing) ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    ctx.setLineDash(dash || []); ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+  };
+  if (tf.drawing) {
+    poly(tf.drawing, C.fg);
+    tf.drawing.forEach(p => dot(...TS(...p), C.fg, 3));
+    return;
+  }
+  if (tf.ghost) poly(tf.ghost, C.muted, null, [4, 4]);
+  poly(tf.poly, C.fg, C['line']);
+  tf.poly.forEach((p, i) => dot(...TS(...p), i === 0 ? C.accent : C.fg, i === 0 ? 4 : 3));
+  const pv = pivotPoint(), [pwx, pwy] = TS(...pv);
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(SX(pwx) - 6, SY(pwy)); ctx.lineTo(SX(pwx) + 6, SY(pwy)); ctx.moveTo(SX(pwx), SY(pwy) - 6); ctx.lineTo(SX(pwx), SY(pwy) + 6); ctx.stroke();
+}
+function matrixHtml(M) {
+  return `<div class="matrix">${M.map(v => `<span>${fmt(Math.abs(v) < 1e-9 ? 0 : +v.toFixed(3))}</span>`).join('')}</div>`;
+}
+function transformPanel() {
+  const tf = state.tf;
+  if (tf.drawing) return `<h2>Draw a shape</h2>
+    <p>Click on the canvas to add corners (${tf.drawing.length} so far). Finish with at least 3.</p>
+    <div class="controls"><button class="btn" data-tf="finish" ${tf.drawing.length < 3 ? 'disabled' : ''}>Finish shape</button>
+    <button class="btn" data-tf="cancel">Cancel</button></div>`;
+  const opRow = ([k, op]) => `<div class="controls">
+      <button class="btn" data-op="${k}" style="width:170px;text-align:left">${op.label}</button>
+      ${op.params.map(([p]) => `<label class="field">${p}<input type="number" step="any" data-param="${k}.${p}" value="${opParams[k][p]}"></label>`).join('')}
+      <kbd>${op.key}</kbd></div>`;
+  return `<h2>2D transforms</h2>
+  <p>Every transform is a 3×3 matrix acting on (x, y, 1). The extra 1 is what lets translation be a matrix too, so any chain of moves collapses into one matrix by multiplying. Rotating or scaling about a point other than the origin is three matrices: move the pivot to the origin, transform, move back.</p>
+  <div class="grp">${Object.entries(OPS).map(opRow).join('')}</div>
+  <div class="grp">
+    <div class="controls"><span class="field">pivot</span>
+      <select id="pivot">${['centroid', 'first vertex', 'origin'].map(p => `<option ${tf.pivot === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
+      <button class="btn" data-tf="undo" ${tf.history.length ? '' : 'disabled'}>Undo</button>
+      <button class="btn" data-tf="draw">Draw new shape</button>
+      <button class="btn" data-tf="reset">Reset</button>
+    </div>
+  </div>
+  ${tf.M ? `<div class="grp"><span class="label">Last: ${OPS[tf.lastOp.name].label}${OPS[tf.lastOp.name].pivot ? ` about ${tf.pivot}` : ''}. The matrix applied:</span>${matrixHtml(tf.M)}</div>` : ''}
+  ${fixedNote(['Both mouse press and release added a vertex, so every corner was stored twice.',
+    'Reflection about y = mx + c had an operator-precedence bug: 2mc/m*m + 1 instead of 2mc/(m² + 1).',
+    'The pivot was cast to int, so repeated rotations slowly drifted the shape.'])}`;
+}
+function transformClick(w) {
+  const tf = state.tf;
+  if (!tf.drawing) return;
+  tf.drawing.push([+(w[0] - OX).toFixed(1), +(w[1] - OY).toFixed(1)]);
+  render();
+}
+const KEYS = { w: ['translate', { dx: 0, dy: 2 }], s: ['translate', { dx: 0, dy: -2 }], a: ['translate', { dx: -2, dy: 0 }], d: ['translate', { dx: 2, dy: 0 }],
+  r: ['rotate', { 'θ°': 15 }], t: ['rotate', { 'θ°': -15 }], k: ['scale', { sx: 1.25, sy: 1.25 }], l: ['scale', { sx: 0.8, sy: 0.8 }],
+  h: ['shear', {}], v: ['reflectX', {}], b: ['reflectY', {}], n: ['reflectO', {}], p: ['reflectL', {}] };
+
+/* ---------- wiring ---------- */
+const HINTS = {
+  circle: 'Click the centre, then a point on the rim.',
+  clip: 'Drag P0, P1 or the window corners (circles). Drag on empty space to draw a new line.',
+  transform: 'Pick a transform, or use the keys from the original program. Orange vertex = first vertex, orange cross = pivot.',
+};
+function draw() {
+  readColors();
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (state.mode === 'dda' || state.mode === 'bresenham') drawLineMode();
+  else if (state.mode === 'circle') drawCircle();
+  else if (state.mode === 'clip') drawClip();
+  else drawTransform();
+}
+function render() {
+  draw();
+  const m = state.mode;
+  hint.textContent = MODES[m]?.hint || HINTS[m];
+  const keepScroll = document.getElementById('trace');
+  panel.innerHTML = m === 'circle' ? circlePanel() : m === 'clip' ? clipPanel() : m === 'transform' ? transformPanel() : linePanel();
+  const tr = document.getElementById('trace');
+  if (tr && (m === 'dda' || m === 'bresenham' || m === 'circle')) {
+    const cur = tr.querySelector('tr.cur');
+    if (cur) tr.scrollTop = Math.max(0, cur.offsetTop - tr.clientHeight + cur.offsetHeight + 4);
+  } else if (tr && keepScroll) tr.scrollTop = keepScroll.scrollTop;
+}
+function setMode(m) {
+  state.mode = m; player.playing = false;
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.mode === m));
+  history.replaceState(null, '', '#' + m);
+  if (m === 'dda' || m === 'bresenham' || m === 'circle') { state.line.pending = null; state.circle.pending = false; startPlayer(); }
+  render();
+}
+
+document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); });
+panel.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.act) {
+    const a = b.dataset.act;
+    if (a === 'play') player.playing ? player.pause() : player.play();
+    else if (a === 'back') player.step(-1);
+    else if (a === 'fwd') player.step(1);
+    else if (a === 'all') { player.playing = false; player.shown = player.total; render(); }
+  } else if (b.dataset.speed) { player.speed = +b.dataset.speed; render(); }
+  else if (b.dataset.op) applyOp(b.dataset.op);
+  else if (b.dataset.tf) {
+    const tf = state.tf, a = b.dataset.tf;
+    if (a === 'undo' && tf.history.length) { tf.poly = tf.history.pop(); tf.ghost = null; tf.M = null; tf.lastOp = null; }
+    if (a === 'reset') { tf.poly = [[-6, -4], [6, -4], [6, 4], [0, 9], [-6, 4]]; tf.history = []; tf.ghost = null; tf.M = null; tf.lastOp = null; }
+    if (a === 'draw') tf.drawing = [];
+    if (a === 'cancel') tf.drawing = null;
+    if (a === 'finish' && tf.drawing.length >= 3) { tf.history.push(tf.poly); tf.poly = tf.drawing; tf.drawing = null; tf.ghost = null; tf.M = null; tf.lastOp = null; }
+    render();
+  }
+});
+panel.addEventListener('change', e => {
+  if (e.target.id === 'pivot') { state.tf.pivot = e.target.value; render(); }
+  else if (e.target.dataset.param) {
+    const [k, p] = e.target.dataset.param.split('.'), v = parseFloat(e.target.value);
+    if (Number.isFinite(v)) opParams[k][p] = v;
+  }
+});
+cv.addEventListener('pointerdown', e => {
+  const w = worldFromEvent(e), m = state.mode;
+  if (m === 'dda' || m === 'bresenham') lineClick(w);
+  else if (m === 'circle') circleClick(w);
+  else if (m === 'clip') { cv.setPointerCapture(e.pointerId); clipDown(w); }
+  else transformClick(w);
+});
+cv.addEventListener('pointermove', e => { if (state.mode === 'clip') clipMove(worldFromEvent(e)); });
+cv.addEventListener('pointerup', () => { state.clip.drag = null; });
+document.addEventListener('keydown', e => {
+  if (state.mode !== 'transform' || e.metaKey || e.ctrlKey || e.altKey || /INPUT|SELECT/.test(e.target.tagName)) return;
+  const k = KEYS[e.key.toLowerCase()];
+  if (k) { e.preventDefault(); applyOp(k[0], k[1]); }
+});
+new ResizeObserver(resize).observe(cv);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+document.fonts?.ready.then(draw);
+
+const start = location.hash.slice(1);
+setMode(['dda', 'bresenham', 'circle', 'clip', 'transform'].includes(start) ? start : 'dda');
+</script>
+</body>
+</html>

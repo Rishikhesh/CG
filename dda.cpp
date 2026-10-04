@@ -1,12 +1,14 @@
-
-#include <windows.h>
+// DDA line drawing: click two points, the line is drawn between them. Click again to start a new line.
 #ifdef __APPLE__
+#include <GLUT/glut.h>
 #else
 #include <GL/glut.h>
 #endif
 
-#include <stdlib.h>
-#include <bits/stdc++.h>
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <vector>
 
 #define SCREEN_HEIGHT 700
 #define SCREEN_WIDTH 1000
@@ -38,27 +40,26 @@ void plotPoint(float x,float y)
     glFlush();
 }
 
+// Step along the longer axis one pixel at a time; the other coordinate grows by
+// dy/steps (or dx/steps) and is rounded. Works for every slope and direction.
 void DDA()
 {
-    float m = (float) ((points[1].second - points[0].second)/(points[1].first - points[0].first));
+    float dx = points[1].first - points[0].first;
+    float dy = points[1].second - points[0].second;
+    int steps = max(fabs(dx), fabs(dy));
+    if(steps == 0)
+    {
+        plotPoint(points[0].first, points[0].second);
+        return;
+    }
+    float xinc = dx / steps, yinc = dy / steps;
     float x = points[0].first, y = points[0].second;
 
-    while(x != points[1].first && y != points[1].second)
+    for(int i = 0; i <= steps; i++)
     {
-        if(m<=1)
-        {
-            x += 1;
-            y += m;
-        }
-
-        else {
-            x += (1/m);
-            y += 1;
-        }
-
         plotPoint(round(x),round(y));
-        //cout<<"X: "<<x<<" Y: "<<y<<endl;
-
+        x += xinc;
+        y += yinc;
     }
 }
 
@@ -66,6 +67,8 @@ void mouseHandle(int button ,int status, int x, int y)
 {
     if(button == GLUT_LEFT_BUTTON &&  status == GLUT_DOWN)
     {
+        if(points.size() == 2)
+            points.clear();
         pair<float,float> p;
         p.first = x;
         p.second = SCREEN_HEIGHT - y;
@@ -74,11 +77,8 @@ void mouseHandle(int button ,int status, int x, int y)
         cout<<"X: "<<p.first<<" Y: "<<p.second<<endl;
 
         points.push_back(p);
-    }
-
-    if(points.size() == 2 && status == GLUT_DOWN)
-    {
-        DDA();
+        if(points.size() == 2)
+            DDA();
     }
 }
 
@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
     glutInitWindowPosition(10,10);
     glutInitDisplayMode(GLUT_RGB | GLUT_SINGLE);
 
-    glutCreateWindow("DAA");
+    glutCreateWindow("DDA");
     init();
 
     glutDisplayFunc(display);

@@ -1,7 +1,15 @@
-#include <windows.h>
+// 2D transforms: left-click the polygon's corners, right-click to finish, then use the keys:
+// w a s d move, k/l scale up/down, r/t rotate, v/b/n reflect about x / y / origin,
+// h shear in x, p reflect about the line y = x + 2, Esc quit.
+#ifdef __APPLE__
+#include <GLUT/glut.h>
+#else
 #include <GL/glut.h>
-#include <bits/stdc++.h>
+#endif
+#include <cmath>
+#include <cstdlib>
 #include <iostream>
+#include <vector>
 using namespace std;
 
 #define CENTER_X 320
@@ -12,7 +20,6 @@ using namespace std;
 
 float arrx[100], arry[100];
 
-vector< vector<float> > points;
 
 int cnt =0;
 
@@ -46,8 +53,8 @@ void translate(int x, int y)
 
 void rotation(float theta)
 {
-    int cx = arrx[0];
-    int cy = arry[0];
+    float cx = arrx[0];
+    float cy = arry[0];
     theta = theta*(2*M_PI/360.0);
     for(int i=0;i<cnt;i++)
     {
@@ -94,8 +101,8 @@ void reflectxy()
 
 void shearingx(float shx)
 {
-    int cx = arrx[0];
-    int cy = arry[0];
+    float cx = arrx[0];
+    float cy = arry[0];
     for(int i=0;i<cnt;i++)
     {
         arrx[i] = arrx[i] - cx;
@@ -114,8 +121,8 @@ void shearingx(float shx)
 
 void scale(float sx, float sy)
 {
-    int cx = arrx[0];
-    int cy = arry[0];
+    float cx = arrx[0];
+    float cy = arry[0];
     for(int i=0;i<cnt;i++)
     {
         arrx[i] = arrx[i] - cx;
@@ -133,15 +140,16 @@ void scale(float sx, float sy)
     }
 }
 
+// reflection about the line y = m*x + c, measured from the drawn axes (origin at the centre)
 void reflectmx(float m,float c)
 {
-    float x,y;
+    float x,y,d = m*m + 1;
     for(int i=0;i<cnt;i++)
     {
-        x = arrx[i];
-        y = arry[i];
-        arrx[i] = x*(((1-m*m)/(m*m+1))) + y *(2*m/(m*m +1)) - ((2*m*c)/m*m +1);
-        arry[i] = x*((2*m)/(m*m+1)) + y*((m*m -1)/(m*m +1)) + ((2*c)/(m*m+1));
+        x = arrx[i] - CENTER_X;
+        y = arry[i] - CENTER_Y;
+        arrx[i] = (x*(1-m*m) + 2*m*y - 2*m*c)/d + CENTER_X;
+        arry[i] = (2*m*x + y*(m*m-1) + 2*c)/d + CENTER_Y;
     }
 }
 
@@ -200,30 +208,24 @@ void key(unsigned char k, int x, int y)
 }
 static void mouse(int button, int status, int x, int y)
 {
-
-    if(button==GLUT_LEFT_BUTTON)
+    if(status != GLUT_DOWN) // GLUT reports both press and release; only count the press
+        return;
+    if(button==GLUT_LEFT_BUTTON && cnt < 100)
     {
         cout<<x<<","<<y<<endl;
         y = SCREEN_HEIGHT-y;
-        vector<float> point;
-        point.push_back(x);
-        point.push_back(y);
         glBegin(GL_POINTS);
             glVertex2f( x,y);
         glEnd();
 
-        points.push_back(point);
+        arrx[cnt] = x;
+        arry[cnt] = y;
         cnt++;
     }
     if(button ==GLUT_RIGHT_BUTTON)
     {
-        int i=0;
-        for (i;i<cnt;i++)
-        {
-            arrx[i] = points[i][0];
-            arry[i] = points[i][1];
-        }
         glutKeyboardFunc(key);
+        glutPostRedisplay();
     }
     glFlush();
 }

@@ -1,11 +1,15 @@
-#include <windows.h>
+// Liang-Barsky line clipping: left-click the line's two ends, right-click two opposite corners
+// of the clip window. The part of the line inside the window is redrawn in green.
 #ifdef __APPLE__
+#include <GLUT/glut.h>
 #else
 #include <GL/glut.h>
 #endif
 
-#include <stdlib.h>
-#include <bits/stdc++.h>
+#include <algorithm>
+#include <cstdlib>
+#include <iostream>
+#include <vector>
 
 #define SCREEN_HEIGHT 700
 #define SCREEN_WIDTH 1000
@@ -68,32 +72,28 @@ void drawWindow()
     glFlush();
 }
 
+// The line is P(u) = P0 + u*(P1-P0), u in [0,1]. Each window edge gives p*u <= q.
+// p < 0: the line enters through that edge  -> u1 = max(u1, q/p)
+// p > 0: the line leaves through that edge  -> u2 = min(u2, q/p)
+// p == 0: parallel to the edge; q < 0 means fully outside it.
 void LBC()
 {
+    float xmin = min(window[0].first, window[1].first), xmax = max(window[0].first, window[1].first);
+    float ymin = min(window[0].second, window[1].second), ymax = max(window[0].second, window[1].second);
     float delx = points[1].first - points[0].first, dely = points[1].second - points[0].second;
-    float p[4];
-    p[0] = -delx;
-    p[1] = delx;
-    p[2] = -dely;
-    p[3] = dely;
-
-    float q[4];
-    q[0] = (points[0].first - window[0].first) ;
-    q[1] = (window[1].first -  points[0].first) ;
-    q[2] = (points[0].second - window[0].second);
-    q[3] = (window[1].second - points[0].second );
-
-    float r[4];
-    r[0]=q[0]/p[0];
-    r[1]=q[1]/p[1];
-    r[2]=q[2]/p[2];
-    r[3]=q[3]/p[3] ;
+    float p[4] = {-delx, delx, -dely, dely};
+    float q[4] = {points[0].first - xmin, xmax - points[0].first,
+                  points[0].second - ymin, ymax - points[0].second};
 
     float u1=0,u2=1;
     for(int i=0;i<4;i++)
     {
-        if(p[i] < 0) u1 = max(u1,r[i]);
-        else u2 = min(u2,r[i]);
+        if(p[i] == 0)
+        {
+            if(q[i] < 0) return;   // parallel and outside: nothing to draw
+        }
+        else if(p[i] < 0) u1 = max(u1,q[i]/p[i]);
+        else u2 = min(u2,q[i]/p[i]);
     }
 
     cout<<"u1: "<<u1<<" u2: "<<u2<<endl;
@@ -105,53 +105,40 @@ void LBC()
         float x2 = points[0].first + delx*u2;
         float y2 = points[0].second + dely*u2;
 
-        cout<<"x1: "<<x1<<" y1:"<<y1<<" x2:"<<x2<<" y2:"<<y2;
+        cout<<"x1: "<<x1<<" y1:"<<y1<<" x2:"<<x2<<" y2:"<<y2<<endl;
         drawLine(x1,y1, x2,y2);
     }
-
-
 }
 
 
 void mouse_handle(int button, int status, int x, int y)
 {
-    if(button == GLUT_LEFT_BUTTON && status ==  GLUT_DOWN)
+    if(status != GLUT_DOWN)
+        return;
+    pair<int,int> p(x, SCREEN_HEIGHT - y);
+    glColor3d(1,0,0);
+    plotPoints(p.first,p.second);
+
+    if(button == GLUT_LEFT_BUTTON && points.size() < 2)
     {
-        pair<int,int> p;
-        p.first = x;
-        p.second = SCREEN_HEIGHT - y;
-
-        glColor3d(1,0,0);
-        plotPoints(p.first,p.second);
-
         points.push_back(p);
-        // cout<<"X: "<<p.first<<" Y: "<<p.second<<endl;
+        if(points.size() == 2)
+            drawLine();
     }
-
-    if(points.size() == 2 && status == GLUT_DOWN)
+    else if(button == GLUT_RIGHT_BUTTON && window.size() < 2)
     {
-        drawLine();
-    }
-
-    if(button == GLUT_RIGHT_BUTTON && status == GLUT_DOWN)
-    {
-        pair<int,int> p;
-        p.first = x;
-        p.second = SCREEN_HEIGHT - y;
-        glColor3d(1,0,0);
-        plotPoints(p.first,p.second);
-
-
         cout<<"w.x: "<<p.first<<" w.y: "<<p.second<<endl;
         window.push_back(p);
+        if(window.size() == 2)
+            drawWindow();
     }
 
-    if(window.size() == 2 && status == GLUT_DOWN)
+    if(points.size() == 2 && window.size() == 2)
     {
-        drawWindow();
         LBC();
+        points.clear();   // next clicks start a new line and window
+        window.clear();
     }
-
 }
 
 int main(int argc, char *argv[])
